@@ -25,33 +25,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Checkout AndroidAPS
       - name: Checkout AndroidAPS
         uses: actions/checkout@v4
         with:
           repository: nightscout/AndroidAPS
           ref: ${{ github.event.inputs.tagName }}
 
+      # Setup Java (AAPS 3.4+ needs Java 21)
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: temurin
+          java-version: 21
 
-      - name: Enable Gradle cache
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      # 🏗️ Build signed APK
-      - name: Build signed APK
+      # Decode keystore from GitHub secret
+      - name: Decode keystore
         run: |
-          ./gradlew :app:assembleFullRelease \
-            -Pandroid.injected.signing.store.file=keystore.jks \
-            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+          mkdir -p app
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/keystore.jks
 
+      # (Optional) sanity check
+      - name: Verify keystore exists
+        run: ls -lah app/
+
+      # Build signed APK
+      - name: Build signed APK
+        run: ./gradlew assembleFullRelease
+        env:
+          ORG_GRADLE_PROJECT_android.injected.signing.store.file: ${{ github.workspace }}/app/keystore.jks
+          ORG_GRADLE_PROJECT_android.injected.signing.store.password: ${{ secrets.KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_android.injected.signing.key.alias: ${{ secrets.KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_android.injected.signing.key.password: ${{ secrets.KEY_PASSWORD }}
+
+      # Upload APK artifact
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
