@@ -1,4 +1,4 @@
-name: Build AndroidAPS APK
+name: Build AndroidAPS APK (Signed)
 
 on:
   workflow_dispatch:
@@ -43,8 +43,18 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      - name: Build APK
-        run: ./gradlew :app:assembleFullRelease
+      # 🔐 Decode keystore
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
+
+      # 🏗️ Build signed APK
+      - name: Build signed APK
+        run: |
+          ./gradlew :app:assembleFullRelease \
+            -Pandroid.injected.signing.store.file=keystore.jks \
+            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
