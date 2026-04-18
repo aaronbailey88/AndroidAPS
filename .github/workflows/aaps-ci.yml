@@ -43,10 +43,6 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      # 🔐 Decode keystore
-      - name: Decode keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
-
       # 🏗️ Build signed APK
       - name: Build signed APK
         run: |
