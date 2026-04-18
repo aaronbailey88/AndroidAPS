@@ -79,7 +79,7 @@ jobs:
 
       # 🔨 Build APK
       - name: Build Release APK
-        run: ./gradlew assembleFullRelease
+        run: ./gradlew assembleFullRelease -PignoreGitState=true
 
       # 📦 Upload APK
       - name: Upload APK
