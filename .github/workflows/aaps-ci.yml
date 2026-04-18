@@ -6,7 +6,7 @@ on:
       tagName:
         description: 'Select AAPS Version'
         required: true
-        default: '3.4.2.2'
+        default: '3.4.2.1'
         type: choice
         options:
           - 3.4.2.2
@@ -17,50 +17,73 @@ on:
           - 3.3.2.1
           - 3.3.2.0
           - 3.3.1.3
-          - 3.2.0.4
-          - 3.2.0.3
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout AndroidAPS
+      # 🧱 Checkout repo WITH submodules (fixes your error)
       - name: Checkout AndroidAPS
         uses: actions/checkout@v4
         with:
           repository: nightscout/AndroidAPS
           ref: ${{ github.event.inputs.tagName }}
+          submodules: recursive
+          fetch-depth: 0
 
-      # Setup Java (AAPS 3.4+ needs Java 21)
-      - name: Set up JDK
+      # ☕ Correct Java version
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 21
+          distribution: 'temurin'
+          java-version: '21'
 
-      # Decode keystore from GitHub secret
-      - name: Decode keystore
+      # ⚡ Cache Gradle (faster builds)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: |
+            gradle-${{ runner.os }}
+
+      # 🧹 Clean build (avoids weird failures)
+      - name: Clean project
+        run: ./gradlew clean
+
+      # 🔑 Generate signing keystore (auto, no secrets needed)
+      - name: Generate keystore
         run: |
-          mkdir -p app
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/keystore.jks
+          keytool -genkeypair \
+            -v \
+            -storetype PKCS12 \
+            -keystore keystore.jks \
+            -alias aaps \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass password \
+            -keypass password \
+            -dname "CN=AndroidAPS, OU=CI, O=CI, L=CI, S=CI, C=US"
 
-      # (Optional) sanity check
-      - name: Verify keystore exists
-        run: ls -lah app/
+      # 🔐 Inject signing config into gradle
+      - name: Configure signing
+        run: |
+          echo "MYAPP_UPLOAD_STORE_FILE=keystore.jks" >> gradle.properties
+          echo "MYAPP_UPLOAD_KEY_ALIAS=aaps" >> gradle.properties
+          echo "MYAPP_UPLOAD_STORE_PASSWORD=password" >> gradle.properties
+          echo "MYAPP_UPLOAD_KEY_PASSWORD=password" >> gradle.properties
 
-      # Build signed APK
-      - name: Build signed APK
+      # 🔨 Build APK
+      - name: Build Release APK
         run: ./gradlew assembleFullRelease
-        env:
-          ORG_GRADLE_PROJECT_android.injected.signing.store.file: ${{ github.workspace }}/app/keystore.jks
-          ORG_GRADLE_PROJECT_android.injected.signing.store.password: ${{ secrets.KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_android.injected.signing.key.alias: ${{ secrets.KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_android.injected.signing.key.password: ${{ secrets.KEY_PASSWORD }}
 
-      # Upload APK artifact
+      # 📦 Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: androidaps-apk
+          name: AndroidAPS-${{ github.event.inputs.tagName }}
           path: app/build/outputs/apk/full/release/*.apk
